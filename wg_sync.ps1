@@ -112,6 +112,11 @@ function Read-PackageFile {
             $line = $lines[$i]
             if ([string]::IsNullOrWhiteSpace($line)) { continue }
 
+            $name = if ($namePos -ge 0 -and $line.Length -gt $namePos) {
+                $end = if ($idPos -gt 0) { [Math]::Min($idPos, $line.Length) } else { $line.Length }
+                $line.Substring($namePos, $end - $namePos).Trim()
+            } else { '' }
+
             $id = if ($line.Length -gt $idPos) {
                 $end = if ($versionPos -gt 0) { [Math]::Min($versionPos, $line.Length) } else { $line.Length }
                 $line.Substring($idPos, $end - $idPos).Trim()
@@ -126,7 +131,7 @@ function Read-PackageFile {
                 $line.Substring($sourcePos).Trim()
             } else { '' }
 
-            if ($id) { $packages.Add([PSCustomObject]@{ Id = $id; Version = $version; Source = $source }) }
+            if ($id) { $packages.Add([PSCustomObject]@{ Name = $name; Id = $id; Version = $version; Source = $source }) }
         }
     } else {
         # Tab-delimited fallback (old format)
@@ -134,6 +139,7 @@ function Read-PackageFile {
             if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith('#')) { continue }
             $parts = $line -split '\t'
             $packages.Add([PSCustomObject]@{
+                Name    = ''
                 Id      = $parts[0].Trim()
                 Version = if ($parts.Count -ge 2) { $parts[1].Trim() } else { '' }
                 Source  = if ($parts.Count -ge 3) { $parts[2].Trim() } else { '' }
@@ -183,6 +189,8 @@ function Invoke-Diff {
     Write-Host 'Reading installed packages...'
     $installed   = Get-InstalledPackages
     $saved       = Read-PackageFile -Path $FileName
+    $installedMap = @{}; $installed | ForEach-Object { $installedMap[$_.Id] = $_.Name }
+    $savedMap     = @{}; $saved     | ForEach-Object { $savedMap[$_.Id] = $_.Name }
     $installedIds = @($installed | Select-Object -ExpandProperty Id)
     $savedIds     = @($saved     | Select-Object -ExpandProperty Id)
 
@@ -191,11 +199,11 @@ function Invoke-Diff {
 
     if ($missing) {
         Write-Host "`nIn file, not installed ($($missing.Count)):" -ForegroundColor Yellow
-        $missing | ForEach-Object { Write-Host "  - $_" }
+        $missing | ForEach-Object { Write-Host "  - $($savedMap[$_])  [$_]" }
     }
     if ($extra) {
         Write-Host "`nInstalled, not in file ($($extra.Count)):" -ForegroundColor Cyan
-        $extra | ForEach-Object { Write-Host "  + $_" }
+        $extra | ForEach-Object { Write-Host "  + $($installedMap[$_])  [$_]" }
     }
     if (-not $missing -and -not $extra) {
         Write-Host 'No differences.' -ForegroundColor Green
@@ -209,13 +217,13 @@ function Invoke-Install {
 
     $packages = Read-PackageFile -Path $FileName
     Write-Host "`nPackages to install ($($packages.Count)):"
-    $packages | ForEach-Object { Write-Host "  $($_.Id)  $($_.Version)" }
+    $packages | ForEach-Object { Write-Host "  $($_.Name)  [$($_.Id)]  $($_.Version)" }
 
     $confirm = Read-Host "`nProceed? [y/N]"
     if ($confirm -notmatch '^[yY]$') { Write-Host 'Cancelled.'; return }
 
     foreach ($pkg in $packages) {
-        Write-Host "`n-> $($pkg.Id)" -ForegroundColor Cyan
+        Write-Host "`n-> $($pkg.Name)  [$($pkg.Id)]" -ForegroundColor Cyan
         $installArgs = @('install', '--id', $pkg.Id, '--silent',
                          '--accept-package-agreements', '--accept-source-agreements')
         if ($pkg.Source) { $installArgs += '--source', $pkg.Source }
