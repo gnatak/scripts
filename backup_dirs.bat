@@ -78,9 +78,17 @@ function Find-7Zip {
                 Write-Host "7-Zip byl uspesne nainstalovan." -ForegroundColor Green
                 Write-Host ""
 
+                $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+
                 $newCmd = Get-Command "7z.exe" -ErrorAction SilentlyContinue
                 if ($newCmd) {
                     return $newCmd.Source
+                }
+
+                foreach ($candidate in $candidates) {
+                    if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+                        return $candidate
+                    }
                 }
             }
         }
