@@ -34,15 +34,28 @@ exit /b %ERRORLEVEL%
 
 #== POWERSHELL SCRIPT BELOW ==#
 param(
-    [Parameter(Position = 0)]
-    [ValidateSet('-c', '--create', '-d', '--diff', '-i', '--install', '-h', '--help')]
-    [string]$Action,
-
-    [Parameter(Position = 1)]
-    [string]$FileName
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$Args
 )
 
 Set-StrictMode -Version Latest
+
+$Action = $null
+$FileName = $null
+
+foreach ($arg in $Args) {
+    switch -Exact ($arg) {
+        '-h'        { $Action = 'help' }
+        '--help'    { $Action = 'help' }
+        '-c'        { $Action = 'create' }
+        '--create'  { $Action = 'create' }
+        '-d'        { $Action = 'diff'   }
+        '--diff'    { $Action = 'diff'   }
+        '-i'        { $Action = 'install' }
+        '--install' { $Action = 'install' }
+        default     { if (-not $FileName) { $FileName = $arg } }
+    }
+}
 
 function Get-WingetListNames {
     $raw    = & winget list 2>&1
@@ -263,7 +276,7 @@ function Show-Help {
     Write-Host 'File format: fixed-width columns (Name, Id, Version, Source) with header and separator'
 }
 
-if ($Action -eq '-h' -or $Action -eq '--help') {
+if ($Action -eq 'help') {
     Show-Help
     exit 0
 }
@@ -273,19 +286,8 @@ if (-not $Action) {
     exit 1
 }
 
-$NormalizeAction = @{
-    '-c'        = 'create'
-    '--create'  = 'create'
-    '-d'        = 'diff'
-    '--diff'    = 'diff'
-    '-i'        = 'install'
-    '--install' = 'install'
-}
-
-$ActionType = $NormalizeAction[$Action]
-
 if (-not $FileName) {
-    if ($ActionType -eq 'create') {
+    if ($Action -eq 'create') {
         $FileName = "$($env:COMPUTERNAME)_$(Get-Date -Format 'yyyyMMdd').wgl"
     } else {
         $wglFiles = @(Get-ChildItem -Path (Get-Location) -Filter '*.wgl' | Sort-Object Name)
@@ -306,7 +308,7 @@ if (-not $FileName) {
     }
 }
 
-switch ($ActionType) {
+switch ($Action) {
     'create'  { Invoke-Create  -FileName $FileName }
     'diff'    { Invoke-Diff    -FileName $FileName }
     'install' { Invoke-Install -FileName $FileName }
