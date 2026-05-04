@@ -2,16 +2,16 @@
 setlocal EnableExtensions DisableDelayedExpansion
 
 rem ==========================================================
-rem  Zaloha podadresaru do sifrovanych 7z archivu
+rem  Backup subdirectories to encrypted 7z archives
 rem
-rem  Pouziti:
+rem  Usage:
 rem    backup_dirs.bat
 rem    backup_dirs.bat "D:\Data"
 rem
-rem  Vysledek:
-rem    jmeno_adresare_YYYYMMDD.7z
+rem  Result:
+rem    directory_name_YYYYMMDD.7z
 rem
-rem  Heslo se zadava skryte pres PowerShell.
+rem  Password is entered securely via PowerShell.
 rem ==========================================================
 
 set "BACKUP_ROOT=%~1"
@@ -25,7 +25,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
   "  $raw = Get-Content -LiteralPath $env:BAT_SELF -Raw;" ^
   "  $marker = '#== POWERSHELL SCRIPT BELOW ==#';" ^
   "  $idx = $raw.LastIndexOf($marker);" ^
-  "  if ($idx -lt 0) { throw 'Nenalezena vlozena PowerShell cast skriptu.' }" ^
+  "  if ($idx -lt 0) { throw 'Embedded PowerShell script section not found.' }" ^
   "  $script = $raw.Substring($idx + $marker.Length);" ^
   "  & ([scriptblock]::Create($script)) -Root $env:BACKUP_ROOT;" ^
   "  exit 0" ^
@@ -60,14 +60,14 @@ function Find-7Zip {
     }
 
     Write-Host ""
-    Write-Host "7-Zip nebyl nalezen." -ForegroundColor Yellow
+    Write-Host "7-Zip was not found." -ForegroundColor Yellow
     Write-Host ""
 
-    $response = Read-Host "Chcete si nainstalovat 7-Zip z winget? [y/N]"
+    $response = Read-Host "Do you want to install 7-Zip from winget? [y/N]"
 
     if ($response -match '^[yY]$') {
         Write-Host ""
-        Write-Host "Instaluji 7-Zip..." -ForegroundColor Cyan
+        Write-Host "Installing 7-Zip..." -ForegroundColor Cyan
         Write-Host ""
 
         try {
@@ -75,7 +75,7 @@ function Find-7Zip {
 
             if ($LASTEXITCODE -eq 0) {
                 Write-Host ""
-                Write-Host "7-Zip byl uspesne nainstalovan." -ForegroundColor Green
+                Write-Host "7-Zip was successfully installed." -ForegroundColor Green
                 Write-Host ""
 
                 $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
@@ -93,11 +93,11 @@ function Find-7Zip {
             }
         }
         catch {
-            Write-Host "Chyba pri instalaci: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "Installation error: $($_.Exception.Message)" -ForegroundColor Red
         }
     }
 
-    throw "7-Zip neni dostupny. Nainstalujte 7-Zip nebo pridejte 7z.exe do PATH."
+    throw "7-Zip is not available. Install 7-Zip or add 7z.exe to PATH."
 }
 
 function Get-DirectorySizeBytes {
@@ -154,7 +154,7 @@ try {
     $rootItem = Get-Item -LiteralPath $Root -ErrorAction Stop
 
     if (-not $rootItem.PSIsContainer) {
-        throw "Zadana cesta neni adresar: $Root"
+        throw "The specified path is not a directory: $Root"
     }
 
     $rootPath = $rootItem.FullName
@@ -163,16 +163,16 @@ try {
 
     if ($directories.Count -eq 0) {
         Write-Host ""
-        Write-Host "V adresari nejsou zadne podadresare k zaloze:"
+        Write-Host "No subdirectories found to backup:"
         Write-Host "  $rootPath"
         exit 0
     }
 
     Write-Host ""
-    Write-Host "Adresar pro zalohu:"
+    Write-Host "Backup directory:"
     Write-Host "  $rootPath"
     Write-Host ""
-    Write-Host "Pocitam velikosti adresaru..."
+    Write-Host "Computing directory sizes..."
     Write-Host ""
 
     $backupItems = foreach ($dir in $directories) {
@@ -191,38 +191,38 @@ try {
         $totalBytes = 0
     }
 
-    Write-Host "Zalohovat se budou tyto adresare:"
+    Write-Host "Directories to backup:"
     Write-Host ""
 
     $backupItems |
         Select-Object `
-            @{Name = "Adresar"; Expression = { $_.Name } },
-            @{Name = "Velikost"; Expression = { $_.SizeText } },
-            @{Name = "Cesta"; Expression = { $_.FullName } } |
+            @{Name = "Directory"; Expression = { $_.Name } },
+            @{Name = "Size"; Expression = { $_.SizeText } },
+            @{Name = "Path"; Expression = { $_.FullName } } |
         Format-Table -AutoSize
 
     Write-Host ""
-    Write-Host ("Celkem: {0} adresaru, velikost priblizne {1}" -f $backupItems.Count, (Format-Bytes $totalBytes))
+    Write-Host ("Total: {0} directories, approximate size {1}" -f $backupItems.Count, (Format-Bytes $totalBytes))
     Write-Host ""
 
-    $securePassword1 = Read-Host -AsSecureString "Zadejte heslo pro sifrovane archivy"
-    $securePassword2 = Read-Host -AsSecureString "Zadejte heslo znovu pro kontrolu"
+    $securePassword1 = Read-Host -AsSecureString "Enter password for encrypted archives"
+    $securePassword2 = Read-Host -AsSecureString "Enter password again to verify"
 
     $password1 = Convert-SecureStringToPlainText $securePassword1
     $password2 = Convert-SecureStringToPlainText $securePassword2
 
     if ([string]::IsNullOrEmpty($password1)) {
-        throw "Heslo nesmi byt prazdne."
+        throw "Password cannot be empty."
     }
 
     if ($password1 -ne $password2) {
-        throw "Hesla se neshoduji."
+        throw "Passwords do not match."
     }
 
     $date = Get-Date -Format "yyyyMMdd"
 
     Write-Host ""
-    Write-Host "Zacinam vytvaret sifrovane archivy..."
+    Write-Host "Starting to create encrypted archives..."
     Write-Host ""
 
     $failed = 0
@@ -236,12 +236,12 @@ try {
             $archivePath = Join-Path $rootPath $archiveName
 
             if (Test-Path -LiteralPath $archivePath) {
-                Write-Warning "Archiv uz existuje, preskakuji: $archivePath"
+                Write-Warning "Archive already exists, skipping: $archivePath"
                 continue
             }
 
-            Write-Host "Zalohuji: $($item.Name)"
-            Write-Host "Archiv:   $archiveName"
+            Write-Host "Backing up: $($item.Name)"
+            Write-Host "Archive:    $archiveName"
 
             $arguments = @(
                 "a",
@@ -259,18 +259,18 @@ try {
             $exitCode = $LASTEXITCODE
 
             if ($exitCode -eq 0) {
-                Write-Host "Hotovo."
+                Write-Host "Done."
                 Write-Host ""
             }
             elseif ($exitCode -eq 1) {
                 $warnings++
-                Write-Warning "Archiv byl vytvoren s varovanim: $archivePath"
+                Write-Warning "Archive created with warning: $archivePath"
                 Write-Host ""
             }
             else {
                 $failed++
-                Write-Host "CHYBA pri vytvareni archivu: $archivePath"
-                Write-Host "Navratovy kod 7-Zip: $exitCode"
+                Write-Host "ERROR creating archive: $archivePath"
+                Write-Host "7-Zip exit code: $exitCode"
                 Write-Host ""
             }
         }
@@ -280,9 +280,9 @@ try {
     }
 
     Write-Host ""
-    Write-Host "Zalohovani dokonceno."
-    Write-Host "Varovani: $warnings"
-    Write-Host "Chyby:    $failed"
+    Write-Host "Backup completed."
+    Write-Host "Warnings: $warnings"
+    Write-Host "Errors:   $failed"
 
     if ($failed -gt 0) {
         exit 2
