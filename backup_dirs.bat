@@ -5,163 +5,258 @@ rem ==========================================================
 rem  Zaloha podadresaru do sifrovanych 7z archivu
 rem
 rem  Pouziti:
-rem    zaloha_adresaru.bat
-rem    zaloha_adresaru.bat "D:\Data"
+rem    backup_dirs.bat
+rem    backup_dirs.bat "D:\Data"
 rem
 rem  Vysledek:
 rem    jmeno_adresare_YYYYMMDD.7z
+rem
+rem  Heslo se zadava skryte pres PowerShell.
 rem ==========================================================
 
-rem --- Zjisteni zdrojoveho adresare ---
-if "%~1"=="" (
-    set "ROOT=%CD%"
-) else (
-    set "ROOT=%~1"
-)
+set "BACKUP_ROOT=%~1"
+if not defined BACKUP_ROOT set "BACKUP_ROOT=%CD%"
 
-if not exist "%ROOT%\" (
-    echo Chyba: Zadany adresar neexistuje:
-    echo   %ROOT%
-    exit /b 1
-)
+set "BAT_SELF=%~f0"
 
-rem --- Najdi 7-Zip ---
-set "SEVENZIP="
-
-where 7z.exe >nul 2>nul
-if not errorlevel 1 (
-    for /f "delims=" %%A in ('where 7z.exe 2^>nul') do (
-        if not defined SEVENZIP set "SEVENZIP=%%A"
-    )
-)
-
-if not defined SEVENZIP if exist "%ProgramFiles%\7-Zip\7z.exe" set "SEVENZIP=%ProgramFiles%\7-Zip\7z.exe"
-if not defined SEVENZIP if exist "%ProgramFiles(x86)%\7-Zip\7z.exe" set "SEVENZIP=%ProgramFiles(x86)%\7-Zip\7z.exe"
-
-if not defined SEVENZIP (
-    echo Chyba: 7-Zip nebyl nalezen.
-    echo Nainstalujte 7-Zip nebo pridejte 7z.exe do PATH.
-    exit /b 1
-)
-
-rem --- Datum ve formatu YYYYMMDD ---
-for /f "usebackq delims=" %%A in (`powershell -NoProfile -Command "Get-Date -Format yyyyMMdd"`) do set "TODAY=%%A"
-
-if not defined TODAY (
-    echo Chyba: Nepodarilo se zjistit datum.
-    exit /b 1
-)
-
-echo.
-echo Adresar pro zalohu:
-echo   %ROOT%
-echo.
-echo Zaloha vytvori jeden sifrovany archiv pro kazdy primy podadresar.
-echo.
-
-rem --- Kontrola, jestli existuji nejake podadresare ---
-set "HASDIRS=0"
-for /d %%D in ("%ROOT%\*") do set "HASDIRS=1"
-
-if "%HASDIRS%"=="0" (
-    echo V adresari nejsou zadne podadresare k zaloze.
-    exit /b 0
-)
-
-echo Seznam adresaru, ktere budou zalohovany:
-echo.
-
-rem --- Vypis adresaru vcetne velikosti ---
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$root = '%ROOT%';" ^
-  "$dirs = Get-ChildItem -LiteralPath $root -Directory -Force | Sort-Object Name;" ^
-  "foreach ($d in $dirs) {" ^
-  "  $size = (Get-ChildItem -LiteralPath $d.FullName -Recurse -Force -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum;" ^
-  "  if ($null -eq $size) { $size = 0 }" ^
-  "  $units = 'B','KB','MB','GB','TB';" ^
-  "  $i = 0; $n = [double]$size;" ^
-  "  while ($n -ge 1024 -and $i -lt $units.Count - 1) { $n = $n / 1024; $i++ }" ^
-  "  '{0,-40} {1,12:N2} {2}' -f $d.Name, $n, $units[$i]" ^
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$ErrorActionPreference = 'Stop';" ^
+  "try {" ^
+  "  $raw = Get-Content -LiteralPath $env:BAT_SELF -Raw;" ^
+  "  $marker = '#== POWERSHELL SCRIPT BELOW ==#';" ^
+  "  $idx = $raw.LastIndexOf($marker);" ^
+  "  if ($idx -lt 0) { throw 'Nenalezena vlozena PowerShell cast skriptu.' }" ^
+  "  $script = $raw.Substring($idx + $marker.Length);" ^
+  "  & ([scriptblock]::Create($script)) -Root $env:BACKUP_ROOT;" ^
+  "  exit 0" ^
+  "} catch {" ^
+  "  Write-Error $_.Exception.Message;" ^
+  "  exit 1" ^
   "}"
 
-echo.
-echo ----------------------------------------------------------
-echo.
+exit /b %ERRORLEVEL%
 
-rem --- Heslo ---
-echo Zadejte heslo pro sifrovane archivy.
-echo Pozor: v BAT variante bude heslo pri psani videt.
-echo.
-
-set "PASSWORD="
-set /p "PASSWORD=Heslo: "
-
-if "%PASSWORD%"=="" (
-    echo Chyba: Heslo nesmi byt prazdne.
-    exit /b 1
+#== POWERSHELL SCRIPT BELOW ==#
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$Root
 )
 
-set "PASSWORD2="
-set /p "PASSWORD2=Heslo znovu: "
+function Find-7Zip {
+    $cmd = Get-Command "7z.exe" -ErrorAction SilentlyContinue
+    if ($cmd) {
+        return $cmd.Source
+    }
 
-if not "%PASSWORD%"=="%PASSWORD2%" (
-    echo Chyba: Hesla se neshoduji.
-    exit /b 1
-)
+    $candidates = @(
+        "$env:ProgramFiles\7-Zip\7z.exe",
+        "${env:ProgramFiles(x86)}\7-Zip\7z.exe"
+    )
 
-echo.
-echo Zacinam zalohovani...
-echo.
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+            return $candidate
+        }
+    }
 
-pushd "%ROOT%" || (
-    echo Chyba: Nepodarilo se vstoupit do adresare:
-    echo   %ROOT%
-    exit /b 1
-)
+    throw "7-Zip nebyl nalezen. Nainstalujte 7-Zip nebo pridejte 7z.exe do PATH."
+}
 
-rem --- Vytvoreni archivu pro kazdy podadresar ---
-for /d %%D in (*) do call :BackupOne "%%~fD" "%%~nxD"
+function Get-DirectorySizeBytes {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.IO.DirectoryInfo]$Directory
+    )
 
-popd
+    [int64]$size = 0
 
-set "PASSWORD="
-set "PASSWORD2="
+    Get-ChildItem -LiteralPath $Directory.FullName -Recurse -Force -File -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            $size += $_.Length
+        }
 
-echo.
-echo Zaloha dokoncena.
-exit /b 0
+    return $size
+}
 
+function Format-Bytes {
+    param(
+        [int64]$Bytes
+    )
 
-:BackupOne
-set "DIR_FULL=%~1"
-set "DIR_NAME=%~2"
-set "ARCHIVE=%DIR_NAME%_%TODAY%.7z"
+    if ($Bytes -eq 0) {
+        return "0 B"
+    }
 
-echo Zalohuji: %DIR_NAME%
-echo Archiv:   %ARCHIVE%
+    $units = @("B", "KB", "MB", "GB", "TB", "PB")
+    $index = [Math]::Floor([Math]::Log($Bytes) / [Math]::Log(1024))
+    $index = [Math]::Min($index, $units.Count - 1)
 
-if exist "%ARCHIVE%" (
-    echo Archiv uz existuje, preskakuji.
-    echo.
-    exit /b 0
-)
+    return "{0:N2} {1}" -f ($Bytes / [Math]::Pow(1024, $index)), $units[$index]
+}
 
-"%SEVENZIP%" a -t7z "%ARCHIVE%" "%DIR_NAME%" -mx=9 -mhe=on -p"%PASSWORD%" -y
+function Convert-SecureStringToPlainText {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Security.SecureString]$SecureString
+    )
 
-if errorlevel 2 (
-    echo Chyba pri vytvareni archivu:
-    echo   %ARCHIVE%
-    echo.
-    exit /b 1
-)
+    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecureString)
 
-if errorlevel 1 (
-    echo Archiv byl vytvoren s varovanim:
-    echo   %ARCHIVE%
-    echo.
-    exit /b 0
-)
+    try {
+        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+    }
+    finally {
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+    }
+}
 
-echo Hotovo.
-echo.
-exit /b 0
+try {
+    $sevenZip = Find-7Zip
+
+    $rootItem = Get-Item -LiteralPath $Root -ErrorAction Stop
+
+    if (-not $rootItem.PSIsContainer) {
+        throw "Zadana cesta neni adresar: $Root"
+    }
+
+    $rootPath = $rootItem.FullName
+
+    $directories = @(Get-ChildItem -LiteralPath $rootPath -Directory -Force | Sort-Object Name)
+
+    if ($directories.Count -eq 0) {
+        Write-Host ""
+        Write-Host "V adresari nejsou zadne podadresare k zaloze:"
+        Write-Host "  $rootPath"
+        exit 0
+    }
+
+    Write-Host ""
+    Write-Host "Adresar pro zalohu:"
+    Write-Host "  $rootPath"
+    Write-Host ""
+    Write-Host "Pocitam velikosti adresaru..."
+    Write-Host ""
+
+    $backupItems = foreach ($dir in $directories) {
+        $sizeBytes = Get-DirectorySizeBytes -Directory $dir
+
+        [PSCustomObject]@{
+            Name      = $dir.Name
+            FullName  = $dir.FullName
+            SizeBytes = $sizeBytes
+            SizeText  = Format-Bytes $sizeBytes
+        }
+    }
+
+    $totalBytes = ($backupItems | Measure-Object -Property SizeBytes -Sum).Sum
+    if ($null -eq $totalBytes) {
+        $totalBytes = 0
+    }
+
+    Write-Host "Zalohovat se budou tyto adresare:"
+    Write-Host ""
+
+    $backupItems |
+        Select-Object `
+            @{Name = "Adresar"; Expression = { $_.Name } },
+            @{Name = "Velikost"; Expression = { $_.SizeText } },
+            @{Name = "Cesta"; Expression = { $_.FullName } } |
+        Format-Table -AutoSize
+
+    Write-Host ""
+    Write-Host ("Celkem: {0} adresaru, velikost priblizne {1}" -f $backupItems.Count, (Format-Bytes $totalBytes))
+    Write-Host ""
+
+    $securePassword1 = Read-Host -AsSecureString "Zadejte heslo pro sifrovane archivy"
+    $securePassword2 = Read-Host -AsSecureString "Zadejte heslo znovu pro kontrolu"
+
+    $password1 = Convert-SecureStringToPlainText $securePassword1
+    $password2 = Convert-SecureStringToPlainText $securePassword2
+
+    if ([string]::IsNullOrEmpty($password1)) {
+        throw "Heslo nesmi byt prazdne."
+    }
+
+    if ($password1 -ne $password2) {
+        throw "Hesla se neshoduji."
+    }
+
+    $date = Get-Date -Format "yyyyMMdd"
+
+    Write-Host ""
+    Write-Host "Zacinam vytvaret sifrovane archivy..."
+    Write-Host ""
+
+    $failed = 0
+    $warnings = 0
+
+    Push-Location $rootPath
+
+    try {
+        foreach ($item in $backupItems) {
+            $archiveName = "{0}_{1}.7z" -f $item.Name, $date
+            $archivePath = Join-Path $rootPath $archiveName
+
+            if (Test-Path -LiteralPath $archivePath) {
+                Write-Warning "Archiv uz existuje, preskakuji: $archivePath"
+                continue
+            }
+
+            Write-Host "Zalohuji: $($item.Name)"
+            Write-Host "Archiv:   $archiveName"
+
+            $arguments = @(
+                "a",
+                "-t7z",
+                $archivePath,
+                ".\$($item.Name)",
+                "-mx=9",
+                "-mhe=on",
+                "-p$password1",
+                "-y"
+            )
+
+            & $sevenZip @arguments
+
+            $exitCode = $LASTEXITCODE
+
+            if ($exitCode -eq 0) {
+                Write-Host "Hotovo."
+                Write-Host ""
+            }
+            elseif ($exitCode -eq 1) {
+                $warnings++
+                Write-Warning "Archiv byl vytvoren s varovanim: $archivePath"
+                Write-Host ""
+            }
+            else {
+                $failed++
+                Write-Host "CHYBA pri vytvareni archivu: $archivePath"
+                Write-Host "Navratovy kod 7-Zip: $exitCode"
+                Write-Host ""
+            }
+        }
+    }
+    finally {
+        Pop-Location
+    }
+
+    Write-Host ""
+    Write-Host "Zalohovani dokonceno."
+    Write-Host "Varovani: $warnings"
+    Write-Host "Chyby:    $failed"
+
+    if ($failed -gt 0) {
+        exit 2
+    }
+
+    exit 0
+}
+catch {
+    Write-Error $_.Exception.Message
+    exit 1
+}
+finally {
+    $password1 = $null
+    $password2 = $null
+}
