@@ -59,7 +59,37 @@ function Find-7Zip {
         }
     }
 
-    throw "7-Zip nebyl nalezen. Nainstalujte 7-Zip nebo pridejte 7z.exe do PATH."
+    Write-Host ""
+    Write-Host "7-Zip nebyl nalezen." -ForegroundColor Yellow
+    Write-Host ""
+
+    $response = Read-Host "Chcete si nainstalovat 7-Zip z winget? [y/N]"
+
+    if ($response -match '^[yY]$') {
+        Write-Host ""
+        Write-Host "Instaluji 7-Zip..." -ForegroundColor Cyan
+        Write-Host ""
+
+        try {
+            & winget install 7zip.7zip --silent --accept-source-agreements --accept-package-agreements
+
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host ""
+                Write-Host "7-Zip byl uspesne nainstalovan." -ForegroundColor Green
+                Write-Host ""
+
+                $newCmd = Get-Command "7z.exe" -ErrorAction SilentlyContinue
+                if ($newCmd) {
+                    return $newCmd.Source
+                }
+            }
+        }
+        catch {
+            Write-Host "Chyba pri instalaci: $($_.Exception.Message)" -ForegroundColor Red
+        }
+    }
+
+    throw "7-Zip neni dostupny. Nainstalujte 7-Zip nebo pridejte 7z.exe do PATH."
 }
 
 function Get-DirectorySizeBytes {
