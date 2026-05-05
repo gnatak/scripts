@@ -208,6 +208,11 @@ function Format-WingetTable {
 function Invoke-Create {
     param([string]$FileName)
 
+    if (Test-Path -LiteralPath $FileName) {
+        $confirm = Read-Host "File '$FileName' already exists. Overwrite? [y/N]"
+        if ($confirm -notmatch '^[yY]$') { Write-Host 'Cancelled.'; return }
+    }
+
     Write-Host 'Reading installed packages...'
     $packages = Get-InstalledPackages
     $lines    = Format-WingetTable -Packages $packages

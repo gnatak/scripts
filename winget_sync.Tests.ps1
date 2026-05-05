@@ -230,6 +230,46 @@ Describe 'Invoke-Create' {
             Remove-Item $outputFile -Force -ErrorAction SilentlyContinue
         }
     }
+
+    It 'preserves existing file when user declines overwrite' {
+        $outputFile = [System.IO.Path]::GetTempFileName() -replace '\.tmp$', '.wgl'
+        $original   = 'PRESERVED CONTENT - DO NOT OVERWRITE'
+        Set-Content -Path $outputFile -Value $original -Encoding UTF8
+
+        try {
+            Mock -CommandName 'Get-InstalledPackages' {
+                return @([PSCustomObject]@{ Name = 'Git'; Id = 'Git.Git'; Version = '2.54.0'; Source = 'winget' })
+            }
+            Mock -CommandName 'Write-Host'
+            Mock -CommandName 'Read-Host' { return 'n' }
+
+            Invoke-Create -FileName $outputFile
+
+            (Get-Content $outputFile -Raw).Trim() | Should Be $original
+            Assert-MockCalled -CommandName 'Get-InstalledPackages' -Times 0 -Scope It
+        } finally {
+            Remove-Item $outputFile -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'overwrites existing file when user confirms' {
+        $outputFile = [System.IO.Path]::GetTempFileName() -replace '\.tmp$', '.wgl'
+        Set-Content -Path $outputFile -Value 'old content' -Encoding UTF8
+
+        try {
+            Mock -CommandName 'Get-InstalledPackages' {
+                return @([PSCustomObject]@{ Name = 'Git'; Id = 'Git.Git'; Version = '2.54.0'; Source = 'winget' })
+            }
+            Mock -CommandName 'Write-Host'
+            Mock -CommandName 'Read-Host' { return 'y' }
+
+            Invoke-Create -FileName $outputFile
+
+            (Get-Content $outputFile -Raw) | Should Match 'Git\.Git'
+        } finally {
+            Remove-Item $outputFile -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 Describe 'Invoke-Install' {
