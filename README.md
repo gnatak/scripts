@@ -2,6 +2,12 @@
 
 A collection of PowerShell and batch scripts for Windows automation, focused on `winget` package management and encrypted backups.
 
+## Download
+
+Latest release: **[v0.1](https://github.com/gnatak/scripts/releases/tag/v0.1)** — [scripts-0.1.zip](https://github.com/gnatak/scripts/releases/download/v0.1/scripts-0.1.zip)
+
+See all releases at [github.com/gnatak/scripts/releases](https://github.com/gnatak/scripts/releases).
+
 ## Scripts
 
 ### backup_dirs.bat
@@ -56,6 +62,7 @@ winget_sync.bat -h                      # Show help
 - `-c, --create` — Export installed packages to file
 - `-d, --diff` — Compare installed packages against file
 - `-i, --install` — Install packages listed in file
+- `-v, --version` — Show version and author
 - `-h, --help` — Show help
 
 **File Format:**
@@ -80,14 +87,6 @@ winget_sync.bat -d source_packages.wgl
 # Install all packages from the file
 winget_sync.bat -i source_packages.wgl
 ```
-
----
-
-### wg_sync.ps1
-
-PowerShell version of winget sync (pure PowerShell, no BAT wrapper).
-
-**Same functionality as `winget_sync.bat`** but requires PowerShell to run directly.
 
 ---
 
@@ -161,13 +160,12 @@ Package.Id	1.0.0	winget
 
 ## Author
 
-Daniel Komárek, Claude (Anthropic)
+gnat &lt;gnatak@gmail.com&gt;
 
 ## Version
 
-- **backup_dirs.bat** — 1.0 (2026-05-04)
-- **winget_sync.bat** — 1.0 (2026-05-04)
-- **wg_sync.ps1** — 1.0 (2026-04-26)
+Both scripts are at **0.1** — see the [v0.1 release](https://github.com/gnatak/scripts/releases/tag/v0.1).
+Run with `-v` / `--version` to print the version and author at runtime.
 
 ## License
 
