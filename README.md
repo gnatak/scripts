@@ -19,13 +19,24 @@ Backup subdirectories to encrypted 7-Zip archives.
 - Secure password input (masked)
 - Creates individual `.7z` archives for each subdirectory
 - Displays directory sizes before backup
+- Excludes directories via `-e` (CLI) or interactive number selection
 - Skips existing archives by default
 
 **Usage:**
 ```batch
-backup_dirs.bat                  # Backup current directory subdirectories
-backup_dirs.bat "D:\Data"        # Backup specific directory subdirectories
+backup_dirs.bat                                # Backup current directory subdirectories
+backup_dirs.bat "D:\Data"                      # Backup specific directory subdirectories
+backup_dirs.bat "D:\Data" -e node_modules,.git # Skip listed subdirectories
+bd.bat "D:\Data"                               # Short alias
 ```
+
+**Options:**
+- `-e, --exclude` — Comma-separated list of subdirectory names to skip (case-insensitive)
+- `-v, --version` — Show version and author
+- `-h, --help` — Show help
+
+After the directory list is printed you can also exclude entries interactively
+by typing their numbers (comma-separated), or press Enter to keep all.
 
 **Requirements:**
 - 7-Zip (automatically installed if missing)
@@ -56,6 +67,7 @@ winget_sync.bat -c mypackages.wgl       # Export to specific file
 winget_sync.bat -d mypackages.wgl       # Compare installed vs. file
 winget_sync.bat -i mypackages.wgl       # Install packages from file
 winget_sync.bat -h                      # Show help
+ws.bat -d mypackages.wgl                # Short alias
 ```
 
 **Options:**

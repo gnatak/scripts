@@ -7,6 +7,7 @@ rem
 rem  Usage:
 rem    backup_dirs.bat
 rem    backup_dirs.bat "D:\Data"
+rem    backup_dirs.bat "D:\Data" -e node_modules,.git
 rem
 rem  Result:
 rem    directory_name_YYYYMMDD.7z
@@ -14,11 +15,8 @@ rem
 rem  Password is entered securely via PowerShell.
 rem ==========================================================
 
-set "BACKUP_ROOT=%~1"
-if not defined BACKUP_ROOT set "BACKUP_ROOT=%CD%"
-
 set "BAT_SELF=%~f0"
-set "BAT_ARG1=%~1"
+set "BAT_ARGS=%*"
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
   "$ErrorActionPreference = 'Stop';" ^
@@ -28,7 +26,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
   "  $idx = $raw.LastIndexOf($marker);" ^
   "  if ($idx -lt 0) { throw 'Embedded PowerShell script section not found.' }" ^
   "  $script = $raw.Substring($idx + $marker.Length);" ^
-  "  & ([scriptblock]::Create($script)) -Root $env:BACKUP_ROOT -FirstArg $env:BAT_ARG1;" ^
+  "  & ([scriptblock]::Create($script));" ^
   "  exit 0" ^
   "} catch {" ^
   "  Write-Error $_.Exception.Message;" ^
@@ -38,15 +36,42 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
 exit /b %ERRORLEVEL%
 
 #== POWERSHELL SCRIPT BELOW ==#
-param(
-    [Parameter(Mandatory = $true)]
-    [string]$Root,
-
-    [string]$FirstArg = ''
-)
-
 $Script:Version = '0.1'
 $Script:Author  = 'gnat <gnatak@gmail.com>'
+
+$argLine = if ($env:BAT_ARGS) { $env:BAT_ARGS } else { '' }
+$ParsedArgs = @([regex]::Matches($argLine, '"([^"]*)"|(\S+)') | ForEach-Object {
+    if ($_.Groups[1].Success) { $_.Groups[1].Value } else { $_.Groups[2].Value }
+})
+
+$Action   = $null
+$Root     = $null
+$Excludes = @()
+
+for ($i = 0; $i -lt $ParsedArgs.Count; $i++) {
+    $arg = $ParsedArgs[$i]
+    switch -Exact ($arg) {
+        '-h'        { $Action = 'help' }
+        '--help'    { $Action = 'help' }
+        '-v'        { $Action = 'version' }
+        '--version' { $Action = 'version' }
+        '-e'        {
+            $i++
+            if ($i -lt $ParsedArgs.Count) {
+                $Excludes += ($ParsedArgs[$i] -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+            }
+        }
+        '--exclude' {
+            $i++
+            if ($i -lt $ParsedArgs.Count) {
+                $Excludes += ($ParsedArgs[$i] -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+            }
+        }
+        default     { if (-not $Root) { $Root = $arg } }
+    }
+}
+
+if (-not $Root) { $Root = (Get-Location).Path }
 
 function Show-Version {
     Write-Host "backup_dirs $Script:Version"
@@ -54,18 +79,20 @@ function Show-Version {
 }
 
 function Show-BackupHelp {
-    Write-Host 'Usage: backup_dirs.bat [path] [-v|--version] [-h|--help]'
+    Write-Host 'Usage: backup_dirs.bat [path] [-e|--exclude <names>] [-v|--version] [-h|--help]'
     Write-Host ''
     Write-Host 'Backs up each subdirectory of <path> (default: current directory) to'
     Write-Host 'an encrypted 7z archive named <dirname>_YYYYMMDD.7z.'
+    Write-Host ''
+    Write-Host 'Options:'
+    Write-Host '  -e, --exclude  Comma-separated list of subdirectory names to skip'
+    Write-Host '                 (case-insensitive, matched against the directory name)'
+    Write-Host '  -v, --version  Show version and author'
+    Write-Host '  -h, --help     Show this help'
 }
 
-switch -Exact ($FirstArg) {
-    '-v'        { Show-Version;     return }
-    '--version' { Show-Version;     return }
-    '-h'        { Show-BackupHelp;  return }
-    '--help'    { Show-BackupHelp;  return }
-}
+if ($Action -eq 'version') { Show-Version;     return }
+if ($Action -eq 'help')    { Show-BackupHelp;  return }
 
 function Find-7Zip {
     $cmd = Get-Command "7z.exe" -ErrorAction SilentlyContinue
@@ -173,6 +200,20 @@ function Convert-SecureStringToPlainText {
     }
 }
 
+function Test-IsExcluded {
+    param(
+        [Parameter(Mandatory = $true)] [string]$Name,
+        [string[]]$ExcludeList
+    )
+    if (-not $ExcludeList -or $ExcludeList.Count -eq 0) { return $false }
+    foreach ($ex in $ExcludeList) {
+        if ([string]::Equals($Name, $ex, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+    return $false
+}
+
 try {
     $sevenZip = Find-7Zip
 
@@ -184,18 +225,36 @@ try {
 
     $rootPath = $rootItem.FullName
 
-    $directories = @(Get-ChildItem -LiteralPath $rootPath -Directory -Force | Sort-Object Name)
+    $allDirectories = @(Get-ChildItem -LiteralPath $rootPath -Directory -Force | Sort-Object Name)
+
+    $skipped = @()
+    $directories = foreach ($dir in $allDirectories) {
+        if (Test-IsExcluded -Name $dir.Name -ExcludeList $Excludes) {
+            $skipped += $dir.Name
+        } else {
+            $dir
+        }
+    }
+    $directories = @($directories)
 
     if ($directories.Count -eq 0) {
         Write-Host ""
         Write-Host "No subdirectories found to backup:"
         Write-Host "  $rootPath"
+        if ($skipped.Count -gt 0) {
+            Write-Host ""
+            Write-Host ("Excluded: {0}" -f ($skipped -join ', '))
+        }
         exit 0
     }
 
     Write-Host ""
     Write-Host "Backup directory:"
     Write-Host "  $rootPath"
+    if ($skipped.Count -gt 0) {
+        Write-Host ""
+        Write-Host ("Excluded ({0}): {1}" -f $skipped.Count, ($skipped -join ', '))
+    }
     Write-Host ""
     Write-Host "Computing directory sizes..."
     Write-Host ""
@@ -216,19 +275,76 @@ try {
         $totalBytes = 0
     }
 
+    function Show-BackupTable {
+        param([PSObject[]]$Items)
+        $i = 0
+        $Items |
+            ForEach-Object {
+                $i++
+                [PSCustomObject]@{
+                    '#'       = $i
+                    Directory = $_.Name
+                    Size      = $_.SizeText
+                    Path      = $_.FullName
+                }
+            } |
+            Format-Table -AutoSize
+    }
+
     Write-Host "Directories to backup:"
     Write-Host ""
-
-    $backupItems |
-        Select-Object `
-            @{Name = "Directory"; Expression = { $_.Name } },
-            @{Name = "Size"; Expression = { $_.SizeText } },
-            @{Name = "Path"; Expression = { $_.FullName } } |
-        Format-Table -AutoSize
+    Show-BackupTable -Items $backupItems
 
     Write-Host ""
     Write-Host ("Total: {0} directories, approximate size {1}" -f $backupItems.Count, (Format-Bytes $totalBytes))
     Write-Host ""
+
+    $excludeInput = Read-Host "Numbers to exclude (comma-separated), or Enter to continue"
+    if (-not [string]::IsNullOrWhiteSpace($excludeInput)) {
+        $excludeIdx = @()
+        foreach ($tok in ($excludeInput -split ',')) {
+            $t = $tok.Trim()
+            if ($t -match '^\d+$') {
+                $n = [int]$t
+                if ($n -ge 1 -and $n -le $backupItems.Count) {
+                    $excludeIdx += ($n - 1)
+                } else {
+                    Write-Warning "Out of range, ignoring: $n"
+                }
+            } elseif ($t) {
+                Write-Warning "Not a number, ignoring: $t"
+            }
+        }
+        $excludeIdx = $excludeIdx | Select-Object -Unique
+        if ($excludeIdx.Count -gt 0) {
+            $removed = @()
+            $kept    = @()
+            for ($i = 0; $i -lt $backupItems.Count; $i++) {
+                if ($excludeIdx -contains $i) { $removed += $backupItems[$i] }
+                else                          { $kept    += $backupItems[$i] }
+            }
+            $backupItems = $kept
+            Write-Host ""
+            Write-Host ("Excluded interactively ({0}): {1}" -f $removed.Count, (($removed | ForEach-Object { $_.Name }) -join ', '))
+
+            if ($backupItems.Count -eq 0) {
+                Write-Host ""
+                Write-Host "No directories left to backup."
+                exit 0
+            }
+
+            $totalBytes = ($backupItems | Measure-Object -Property SizeBytes -Sum).Sum
+            if ($null -eq $totalBytes) { $totalBytes = 0 }
+
+            Write-Host ""
+            Write-Host "Directories to backup:"
+            Write-Host ""
+            Show-BackupTable -Items $backupItems
+            Write-Host ""
+            Write-Host ("Total: {0} directories, approximate size {1}" -f $backupItems.Count, (Format-Bytes $totalBytes))
+            Write-Host ""
+        }
+    }
 
     $securePassword1 = Read-Host -AsSecureString "Enter password for encrypted archives"
     $securePassword2 = Read-Host -AsSecureString "Enter password again to verify"
