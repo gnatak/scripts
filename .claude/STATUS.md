@@ -4,8 +4,8 @@
 
 **Last session:** 2026-05-05
 **Branch:** master
-**Tip commit (will be one ahead after this snapshot's own commit):** `2ede687 Add -e/--exclude flag, interactive exclusion, and bd/ws aliases`
-**Working tree at snapshot time:** clean except for this STATUS.md and the new feedback memory.
+**Tip commit (will be one ahead after this snapshot's own commit):** `3e43cd3 Save session handoff snapshot and "ulož vše" trigger memory`
+**Working tree at snapshot time:** clean.
 
 ## What was done in the previous session
 
@@ -18,6 +18,7 @@
 4. Committed and pushed pre-existing feature work: `-e`/`--exclude` flag, interactive numbered exclusion, `bd.bat` / `ws.bat` aliases.
 5. Installed the four `.bat` files to `c:\Apps\` (the user's PATH dir). Smoke-tested `-v` on each — all reported `0.1`.
 6. Saved the **"ulož vše"** trigger as a feedback memory (see `.claude/memory/feedback_save_everything.md`).
+7. Verified the trigger end-to-end: user invoked "ulož vše" once after the memory was written, and it correctly refreshed STATUS, committed, and pushed.
 
 ## Open items / next likely tasks
 
