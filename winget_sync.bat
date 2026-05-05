@@ -14,6 +14,7 @@ rem  File format: fixed-width columns (Name, Id, Version, Source)
 rem ==========================================================
 
 set "BAT_SELF=%~f0"
+set "BAT_ARGS=%*"
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
   "$ErrorActionPreference = 'Stop';" ^
@@ -23,7 +24,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
   "  $idx = $raw.LastIndexOf($marker);" ^
   "  if ($idx -lt 0) { throw 'Embedded PowerShell script section not found.' }" ^
   "  $script = $raw.Substring($idx + $marker.Length);" ^
-  "  & ([scriptblock]::Create($script)) @args;" ^
+  "  & ([scriptblock]::Create($script));" ^
   "  exit 0" ^
   "} catch {" ^
   "  Write-Error $_.Exception.Message;" ^
@@ -33,17 +34,17 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
 exit /b %ERRORLEVEL%
 
 #== POWERSHELL SCRIPT BELOW ==#
-param(
-    [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$Args
-)
-
 Set-StrictMode -Version Latest
+
+$argLine = if ($env:BAT_ARGS) { $env:BAT_ARGS } else { '' }
+$ParsedArgs = [regex]::Matches($argLine, '"([^"]*)"|(\S+)') | ForEach-Object {
+    if ($_.Groups[1].Success) { $_.Groups[1].Value } else { $_.Groups[2].Value }
+}
 
 $Action = $null
 $FileName = $null
 
-foreach ($arg in $Args) {
+foreach ($arg in $ParsedArgs) {
     switch -Exact ($arg) {
         '-h'        { $Action = 'help' }
         '--help'    { $Action = 'help' }
