@@ -1,4 +1,3 @@
-.claude/
+.claude/settings.local.json
 .obsidian/
-CLAUDE.md
 *.wgl
