@@ -36,6 +36,9 @@ exit /b %ERRORLEVEL%
 #== POWERSHELL SCRIPT BELOW ==#
 Set-StrictMode -Version Latest
 
+$Script:Version = '0.1'
+$Script:Author  = 'gnat <gnatak@gmail.com>'
+
 $argLine = if ($env:BAT_ARGS) { $env:BAT_ARGS } else { '' }
 $ParsedArgs = [regex]::Matches($argLine, '"([^"]*)"|(\S+)') | ForEach-Object {
     if ($_.Groups[1].Success) { $_.Groups[1].Value } else { $_.Groups[2].Value }
@@ -48,6 +51,8 @@ foreach ($arg in $ParsedArgs) {
     switch -Exact ($arg) {
         '-h'        { $Action = 'help' }
         '--help'    { $Action = 'help' }
+        '-v'        { $Action = 'version' }
+        '--version' { $Action = 'version' }
         '-c'        { $Action = 'create' }
         '--create'  { $Action = 'create' }
         '-d'        { $Action = 'diff'   }
@@ -271,19 +276,30 @@ function Invoke-Install {
 }
 
 function Show-Help {
-    Write-Host 'Usage: winget_sync.bat [-c|--create [filename]] [-d|--diff <filename>] [-i|--install <filename>] [-h|--help]'
+    Write-Host 'Usage: winget_sync.bat [-c|--create [filename]] [-d|--diff <filename>] [-i|--install <filename>] [-v|--version] [-h|--help]'
     Write-Host ''
     Write-Host 'Options:'
     Write-Host '  -c, --create   Export installed packages to file (default: COMPUTERNAME_YYYYMMDD.wgl)'
     Write-Host '  -d, --diff     Compare installed packages against file'
     Write-Host '  -i, --install  Install packages listed in file'
+    Write-Host '  -v, --version  Show version and author'
     Write-Host '  -h, --help     Show this help'
     Write-Host ''
     Write-Host 'File format: fixed-width columns (Name, Id, Version, Source) with header and separator'
 }
 
+function Show-Version {
+    Write-Host "winget_sync $Script:Version"
+    Write-Host "Author: $Script:Author"
+}
+
 if ($Action -eq 'help') {
     Show-Help
+    exit 0
+}
+
+if ($Action -eq 'version') {
+    Show-Version
     exit 0
 }
 

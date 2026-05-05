@@ -18,6 +18,7 @@ set "BACKUP_ROOT=%~1"
 if not defined BACKUP_ROOT set "BACKUP_ROOT=%CD%"
 
 set "BAT_SELF=%~f0"
+set "BAT_ARG1=%~1"
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
   "$ErrorActionPreference = 'Stop';" ^
@@ -27,7 +28,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
   "  $idx = $raw.LastIndexOf($marker);" ^
   "  if ($idx -lt 0) { throw 'Embedded PowerShell script section not found.' }" ^
   "  $script = $raw.Substring($idx + $marker.Length);" ^
-  "  & ([scriptblock]::Create($script)) -Root $env:BACKUP_ROOT;" ^
+  "  & ([scriptblock]::Create($script)) -Root $env:BACKUP_ROOT -FirstArg $env:BAT_ARG1;" ^
   "  exit 0" ^
   "} catch {" ^
   "  Write-Error $_.Exception.Message;" ^
@@ -39,8 +40,32 @@ exit /b %ERRORLEVEL%
 #== POWERSHELL SCRIPT BELOW ==#
 param(
     [Parameter(Mandatory = $true)]
-    [string]$Root
+    [string]$Root,
+
+    [string]$FirstArg = ''
 )
+
+$Script:Version = '0.1'
+$Script:Author  = 'gnat <gnatak@gmail.com>'
+
+function Show-Version {
+    Write-Host "backup_dirs $Script:Version"
+    Write-Host "Author: $Script:Author"
+}
+
+function Show-BackupHelp {
+    Write-Host 'Usage: backup_dirs.bat [path] [-v|--version] [-h|--help]'
+    Write-Host ''
+    Write-Host 'Backs up each subdirectory of <path> (default: current directory) to'
+    Write-Host 'an encrypted 7z archive named <dirname>_YYYYMMDD.7z.'
+}
+
+switch -Exact ($FirstArg) {
+    '-v'        { Show-Version;     return }
+    '--version' { Show-Version;     return }
+    '-h'        { Show-BackupHelp;  return }
+    '--help'    { Show-BackupHelp;  return }
+}
 
 function Find-7Zip {
     $cmd = Get-Command "7z.exe" -ErrorAction SilentlyContinue

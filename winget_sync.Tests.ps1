@@ -308,4 +308,12 @@ Describe 'winget_sync.bat (black-box)' {
         $LASTEXITCODE | Should Be 1
         ($output -join "`n") | Should Match 'Usage:'
     }
+
+    It 'prints version and author on -v' {
+        $output = & $batPath -v 2>&1
+        $LASTEXITCODE | Should Be 0
+        ($output -join "`n") | Should Match 'winget_sync 0\.1'
+        ($output -join "`n") | Should Match 'gnat'
+        ($output -join "`n") | Should Match 'gnatak@gmail\.com'
+    }
 }

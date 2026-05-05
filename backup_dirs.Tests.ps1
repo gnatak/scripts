@@ -98,3 +98,19 @@ Describe 'Find-7Zip' {
         Find-7Zip | Should Be 'C:\fake\7z.exe'
     }
 }
+
+Describe 'backup_dirs.bat (black-box)' {
+    It 'prints version and author on -v' {
+        $output = & $batPath -v 2>&1
+        $LASTEXITCODE | Should Be 0
+        ($output -join "`n") | Should Match 'backup_dirs 0\.1'
+        ($output -join "`n") | Should Match 'gnat'
+        ($output -join "`n") | Should Match 'gnatak@gmail\.com'
+    }
+
+    It 'prints help on -h' {
+        $output = & $batPath -h 2>&1
+        $LASTEXITCODE | Should Be 0
+        ($output -join "`n") | Should Match 'Usage:'
+    }
+}
